@@ -45,6 +45,9 @@ COPY src/ ./src/
 COPY config/ ./config/
 COPY deployment/scripts/ ./scripts/
 
+# Copy MCP HTTP Server
+COPY mcp_http_proxy.py ./mcp_http_proxy.py
+
 # Copy configuration templates
 COPY deployment/config/production.yaml ./config/production.yaml
 COPY deployment/config/logging.yaml ./config/logging.yaml
@@ -61,6 +64,10 @@ ENV ENVIRONMENT=production
 ENV LOG_LEVEL=INFO
 ENV WORKERS=4
 
+# MCP HTTP Server defaults (port 8080)
+ENV MCP_PORT=8080
+ENV MCP_HOST=0.0.0.0
+
 # Health check script
 COPY deployment/scripts/healthcheck.py ./healthcheck.py
 RUN chmod +x ./healthcheck.py
@@ -68,25 +75,12 @@ RUN chmod +x ./healthcheck.py
 # Switch to non-root user
 USER zenoo
 
-# Expose port
-EXPOSE 8000
+# Expose port 8080 (MCP HTTP Server default)
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python healthcheck.py
+    CMD curl -f http://localhost:${MCP_PORT:-8080}/health || exit 1
 
-# Default command
-CMD ["python", "-m", "gunicorn", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "${WORKERS:-4}", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--worker-connections", "1000", \
-     "--max-requests", "10000", \
-     "--max-requests-jitter", "1000", \
-     "--preload", \
-     "--access-logfile", "/app/logs/access.log", \
-     "--error-logfile", "/app/logs/error.log", \
-     "--log-level", "${LOG_LEVEL:-info}", \
-     "--timeout", "300", \
-     "--keep-alive", "5", \
-     "src.zenoo_rpc.server:app"]
+# Default command - Start MCP HTTP Server on port 8080
+CMD ["python", "mcp_http_proxy.py"]
